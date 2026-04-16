@@ -1,5 +1,5 @@
 # Import external dependencies
-import random, shutil, time, typer
+import hashlib, json, random, shutil, time, typer
 from pathlib import Path
 from pyfiglet import Figlet
 from rich import print
@@ -8,6 +8,19 @@ from textual.widgets import Footer, Static
 from textual.containers import Horizontal, Container
 from textual.reactive import reactive
 from typing import Annotated
+
+# Define state file
+STATE_FILE = Path('.kronos_state.json')
+
+# State management
+def file_id(path: Path) -> str:
+    return hashlib.md5(str(path).encode()).hexdigest()
+def load_state() -> dict:
+    if STATE_FILE.exists():
+        return json.loads(STATE_FILE.read_text())
+    return {}
+def save_state(state: dict):
+    STATE_FILE.write_text(json.dumps(state, indent=2))
 
 # Initialise typer instance
 cli = typer.Typer()
@@ -18,10 +31,24 @@ def collect_files(base_dir: Path) -> list[Path]:
     '''Recursively collect all files under base_dir'''
     return [p for p in base_dir.rglob('*') if p.is_file()]
 
+# penalty_multiplier
+# Returns a float multiplier based on past interactions with file: skipped/selected reduces multiplier, never seen has no effect
+def penalty_multiplier(state_entry: dict) -> float:
+    # Get number of skips
+    skips = state_entry.get('skip', 0)
+    # Get number of selected
+    selects = state_entry.get('select', 0)
+    # Set up exponential decay for skips and selects
+    skip_penalty = 0.85 ** skips
+    selects_penalty = 0.85 ** selects
+    # Return multiplier (product of penalties)
+    return skip_penalty * selects_penalty
+
+
 # score_file
 # Returns a float score derived from file age and size
-def score_file(file: Path) -> float:
-    '''Scores files by age and size, increasing score for older and larger files'''
+def score_file(file: Path, state: dict) -> float:
+    '''Scores files by age and size, increasing score for older and larger files, and multiplying by decay_multiplier'''
     try:
         # Get file information
         stat = file.stat()
@@ -31,8 +58,10 @@ def score_file(file: Path) -> float:
         size_mb = stat.st_size / (1024*1024)
         # Calculate score as 0.7*age + 0.3*size
         score = (0.7 * age_days)+(0.3 * size_mb)
+        # Calculate final_score
+        final_score = score * penalty_multiplier(state.get(file_id(file),{}))
         # Return score
-        return score
+        return final_score
     # If exception raised:
     except Exception:
         # Return 0
@@ -40,10 +69,10 @@ def score_file(file: Path) -> float:
 
 # smart_shuffle
 # Returns list of Paths after sorting by score and shuffling
-def smart_shuffle(files: list[Path]) -> list[Path]:
+def smart_shuffle(files: list[Path], state: dict) -> list[Path]:
     '''Sorts files by score and shuffles to maintain randomness'''
     # Score all files
-    scored = [(score_file(file), file) for file in files]
+    scored = [(score_file(file, state), file) for file in files]
     # Reverse order so highest scores are first
     scored.sort(reverse=True)
     # Take the top 50% scored files and shuffle
@@ -55,6 +84,7 @@ def smart_shuffle(files: list[Path]) -> list[Path]:
     # Return combined list after shuffling
     return top + bottom
 
+# Define custom class for TUI header
 class KronosHeader(Static):
     def compose(self) -> ComposeResult:
         f = Figlet(font='chunky')
@@ -117,12 +147,13 @@ class Kronos(App):
     reviewed = reactive(0)
     history = ['','','']
 
-    def __init__(self, files, n, kronos_dir, directory):
+    def __init__(self, files, n, kronos_dir, directory, state):
         super().__init__()
         self.files = files
         self.n = n
         self.kronos_dir = kronos_dir
         self.base_dir = directory
+        self.state = state
 
     def compose(self) -> ComposeResult:
         yield KronosHeader()
@@ -202,6 +233,16 @@ class Kronos(App):
         self.index += 1
         self.refresh_ui()
 
+    # Define on_action function to implement state management
+    def on_action(self, file, action):
+        fid = file_id(file)
+        entry = self.state.setdefault(fid, {'select': 0, 'skip': 0})
+        if action == 'select':
+            entry['select'] += 1
+        elif action == 'skip':
+            entry['skip'] += 1
+        save_state(self.state)
+
     # Define action on keybinding y
     def action_accept(self):
         if self.selected >= self.n:
@@ -218,6 +259,8 @@ class Kronos(App):
             counter += 1
         # Copy file to kronos directory
         shutil.copy2(file, dest)
+        # Save state
+        self.on_action(file,'select')
         # Increase number of selected files
         self.selected += 1
         # Increase number of reviewed files
@@ -231,6 +274,8 @@ class Kronos(App):
     # Define action on keybinding n
     def action_skip(self):
         file = self.files[self.index]
+        # Save state
+        self.on_action(file,'skip')
         # Increase number of reviewed files
         self.reviewed += 1
         # Update history
@@ -295,10 +340,13 @@ def main(
         # Exit
         raise typer.Exit(code=1)
 
-    # Shuffle the files
-    files = smart_shuffle(files)
+    # Load state
+    state = load_state()
 
-    app = Kronos(files, n, kronos_dir, directory)
+    # Score and shuffle the files
+    files = smart_shuffle(files, state)
+
+    app = Kronos(files, n, kronos_dir, directory, state)
     app.run()
 
 # Entrypoint
