@@ -1,5 +1,5 @@
 # Import external dependencies
-import random, shutil, typer
+import random, shutil, time, typer
 from pathlib import Path
 from rich import print
 from textual.app import App, ComposeResult
@@ -12,10 +12,47 @@ from typing import Annotated
 cli = typer.Typer()
 
 # collect_files
-# Returns all files under the specified directory
+# Returns list of Paths under the specified directory
 def collect_files(base_dir: Path) -> list[Path]:
     '''Recursively collect all files under base_dir.'''
     return [p for p in base_dir.rglob('*') if p.is_file()]
+
+# score_file
+# Returns a float score derived from file age and size
+def score_file(file: Path) -> float:
+    '''Scores files by age and size, increasing score for older and larger files'''
+    try:
+        # Get file information
+        stat = file.stat()
+        # Extract last modified time for file and convert to days from current time
+        age_days = (time.time() - stat.st_mtime) / 86400
+        # Get size of file and convert to megabytes
+        size_mb = stat.st_size / (1024*1024)
+        # Calculate score as 0.7*age + 0.3*size
+        score = (0.7 * age_days)+(0.3 * size_mb)
+        # Return score
+        return score
+    # If exception raised:
+    except Exception:
+        # Return 0
+        return 0
+
+# smart_shuffle
+# Returns list of Paths after sorting by score and shuffling
+def smart_shuffle(files: list[Path]) -> list[Path]:
+    '''Sorts files by score and shuffles to maintain randomness'''
+    # Score all files
+    scored = [(score_file(file), file) for file in files]
+    # Reverse order so highest scores are first
+    scored.sort(reverse=True)
+    # Take the top 50% scored files and shuffle
+    top = [f for _, f in scored[: len(scored) // 2]]
+    random.shuffle(top)
+    # Take the bottom 50% scored files and shuffle
+    bottom = [f for _, f in scored[len(scored) // 2 :]]
+    random.shuffle(bottom)
+    # Return combined list after shuffling
+    return top + bottom
 
 # Define Textual app
 class Kronos(App):
@@ -182,7 +219,7 @@ def main(
         raise typer.Exit(code=1)
 
     # Shuffle the files
-    random.shuffle(files)
+    files = smart_shuffle(files)
 
     app = Kronos(files, n, kronos_dir)
     app.run()
