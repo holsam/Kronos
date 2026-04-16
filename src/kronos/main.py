@@ -1,10 +1,11 @@
 # Import external dependencies
 import random, shutil, time, typer
 from pathlib import Path
+from pyfiglet import Figlet
 from rich import print
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Static
-from textual.containers import Container
+from textual.widgets import Footer, Static
+from textual.containers import Container, Vertical
 from textual.reactive import reactive
 from typing import Annotated
 
@@ -54,35 +55,42 @@ def smart_shuffle(files: list[Path]) -> list[Path]:
     # Return combined list after shuffling
     return top + bottom
 
+class KronosHeader(Static):
+    def compose(self) -> ComposeResult:
+        f = Figlet(font='chunky')
+        yield Static(f'{f.renderText('KRONOS')}', classes='title')
+
 # Define Textual app
 class Kronos(App):
-    # Define style
+    # Define style using CSS
     CSS = """
     Screen {
         layout: vertical;
     }
-
-    #main {
-        padding: 1 2;
+    .title {
+        content-align: center middle;
+        color: green;
     }
-
+    #main {
+        padding: 0 1;
+    }
     .panel {
         border: round $accent;
-        padding: 1;
-        margin-bottom: 1;
+        # padding: 1;
+        # margin-bottom: 1;
     }
     """
     # Define key bindings
     BINDINGS = [
-        ("y", "accept", "Include"),
-        ("n", "skip", "Skip"),
-        ("q", "quit", "Quit"),
+        ("y", "accept", "Include File"),
+        ("n", "skip", "Skip File"),
+        ("q", "quit", "Quit Kronos"),
     ]
     index = reactive(0)
     selected = reactive(0)
     reviewed = reactive(0)
     last_action = reactive("Starting...")
-    
+
     def __init__(self, files, n, kronos_dir):
         super().__init__()
         self.files = files
@@ -90,7 +98,7 @@ class Kronos(App):
         self.kronos_dir = kronos_dir
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        yield KronosHeader()
         with Container(id="main"):
             self.file_panel = Static(classes="panel")
             self.stats_panel = Static(classes="panel")

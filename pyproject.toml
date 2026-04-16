@@ -1,6 +1,6 @@
 [project]
 name = "kronos"
-version = "0.4.0"
+version = "0.4.1"
 description = "A file rediscovery tool."
 readme = "README.md"
 authors = [
@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "pyfiglet>=1.0.4",
     "rich>=15.0.0",
     "textual>=8.2.3",
     "typer>=0.24.1",
