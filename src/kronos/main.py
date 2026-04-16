@@ -5,7 +5,7 @@ from pyfiglet import Figlet
 from rich import print
 from textual.app import App, ComposeResult
 from textual.widgets import Footer, Static
-from textual.containers import Container, Vertical
+from textual.containers import Horizontal, Container
 from textual.reactive import reactive
 from typing import Annotated
 
@@ -15,7 +15,7 @@ cli = typer.Typer()
 # collect_files
 # Returns list of Paths under the specified directory
 def collect_files(base_dir: Path) -> list[Path]:
-    '''Recursively collect all files under base_dir.'''
+    '''Recursively collect all files under base_dir'''
     return [p for p in base_dir.rglob('*') if p.is_file()]
 
 # score_file
@@ -63,7 +63,7 @@ class KronosHeader(Static):
 # Define Textual app
 class Kronos(App):
     # Define style using CSS
-    CSS = """
+    CSS = '''
     Screen {
         layout: vertical;
     }
@@ -75,58 +75,127 @@ class Kronos(App):
         padding: 0 1;
     }
     .panel {
-        border: round $accent;
-        # padding: 1;
-        # margin-bottom: 1;
+        border: round green;
+        padding: 0 1;
+        height: auto;
     }
-    """
+    #info_panel {
+        border: round green;
+        padding: 0 1;
+        height: auto;
+    }
+
+    #actions, #files {
+        width: 1fr;
+    }
+
+    #history {
+        width: 2fr;
+    }
+
+    #actions {
+        content-align: left middle;
+    }
+
+    #files {
+        content-align: left middle;
+    }
+
+    #history {
+        content-align: left middle;
+        text-wrap: nowrap;
+    }
+    '''
     # Define key bindings
     BINDINGS = [
-        ("y", "accept", "Include File"),
-        ("n", "skip", "Skip File"),
-        ("q", "quit", "Quit Kronos"),
+        ('y', 'accept', 'Include File'),
+        ('n', 'skip', 'Skip File'),
+        ('q', 'quit', 'Quit Kronos'),
     ]
     index = reactive(0)
     selected = reactive(0)
     reviewed = reactive(0)
-    last_action = reactive("Starting...")
+    history = ['','','']
 
-    def __init__(self, files, n, kronos_dir):
+    def __init__(self, files, n, kronos_dir, directory):
         super().__init__()
         self.files = files
         self.n = n
         self.kronos_dir = kronos_dir
+        self.base_dir = directory
 
     def compose(self) -> ComposeResult:
         yield KronosHeader()
-        with Container(id="main"):
-            self.file_panel = Static(classes="panel")
-            self.stats_panel = Static(classes="panel")
-            self.help_panel = Static(
-                "[b]y[/b]=include  [b]n[/b]=skip  [b]q[/b]=quit",
-                classes="panel",
+        with Container(id='main'):
+            self.info_panel = Horizontal(
+                Static(id="actions"),
+                Static(id="files"),
+                Static(id="history"),
+                id="info_panel",
             )
+            self.file_panel = Static(classes='panel')
+            yield self.info_panel
             yield self.file_panel
-            yield self.stats_panel
-            yield self.help_panel
-        yield Footer()
+        # yield Footer()
 
     def on_mount(self):
         self.refresh_ui()
 
+    # Define helper function to format command history
+    def format_history_item(self, text: str, max_width: int = 30) -> str:
+        if len(text) <= max_width:
+            return text
+        # Split into action + filename
+        if text == '':
+            return text
+        if ': ' in text:
+            action, filename = text.split(': ', 1)
+        else:
+            return text[:max_width - 3] + '...'
+        # Extract extension
+        if '.' in filename:
+            name, ext = filename.rsplit('.', 1)
+            ext = '.' + ext
+        else:
+            name, ext = filename, ''
+        # Keep start of filename
+        available = max_width - len(action) - len(ext) - 6  # buffer for ': ...'
+        if available <= 0:
+            return f'{action}: [dim]...[/dim]{ext}'
+        return f'{action}: {name[:available]}[dim]...[/dim]{ext}'
+
     def refresh_ui(self):
+        # Check files included doesn't equal or exceed the desired number
         if self.index >= len(self.files):
             self.exit()
             return
 
+        # Refresh actions column of info panel
+        self.query_one('#actions', Static).update(
+            f'[bold]ACTIONS[/bold]\n[italic][bold]y[/bold] = include file\n[bold]n[/bold] = skip file\n[bold]q[/bold] = quit Kronos[/italic]'
+        )
+
+        # Refresh files column of info panel
+        self.query_one('#files', Static).update(
+            f'[bold]FILES[/bold]\n[italic][bold]Found:[/bold] {len(self.files)}\n[bold]Reviewed:[/bold] {self.reviewed}\n[bold]Included:[/bold] {self.selected}/{self.n}[/italic]'
+        )
+
+        # Refresh history column of info panel
+        history_items = self.history[-3:] if hasattr(self, 'history') else []
+        terminal_width = (self.query_one('#history').size.width) - 4
+        formatted = [self.format_history_item(item, terminal_width) for item in history_items]
+        self.query_one('#history', Static).update(f'[bold]HISTORY[/bold]\n[italic]{'\n'.join(formatted)}[/italic]')
+        
+        # Update file 
         file = self.files[self.index]
 
-        self.file_panel.update(f"[bold cyan]{file}[/bold cyan]")
+        # Refresh file panel
+        cur_dir = self.kronos_dir.parent # get current directory
+        rel_parent = file.relative_to(self.base_dir).parent # get parent of files relative to current directory subdirectory/ies file is from
+        subdir = '/' if rel_parent == "." else f'{rel_parent}/'
 
-        self.stats_panel.update(
-            f"[green]Selected:[/green] {self.selected}/{self.n}\n"
-            f"[yellow]Reviewed:[/yellow] {self.reviewed}/{len(self.files)}\n"
-            f"[magenta]Last:[/magenta] {self.last_action}"
+        self.file_panel.update(
+            f'[bold]CURRENT FILE[/bold]\n[italic]Subdirectory: [cyan]{subdir}[/cyan]\nFile: [cyan]{file.name}[/cyan]'
         )
 
     def next_file(self):
@@ -153,8 +222,8 @@ class Kronos(App):
         self.selected += 1
         # Increase number of reviewed files
         self.reviewed += 1
-        # Update last_action
-        self.last_action = f"Added: {file.name}"
+        # Update history
+        self.history.append(f'Included: {file.name}')
         if self.selected >= self.n:
             self.exit()
         else:
@@ -164,13 +233,13 @@ class Kronos(App):
         file = self.files[self.index]
         # Increase number of reviewed files
         self.reviewed += 1
-        # Update last_action
-        self.last_action = f"Skipped: {file.name}"
+        # Update history
+        self.history.append(f'Skipped: {file.name}')
         self.next_file()
     # Define action on keybinding q
     def action_quit(self):
-        # Update last_action
-        self.last_action = "Quit"
+        # Update history
+        self.history.append(f'Quit Kronos')
         self.exit()
 
 
@@ -229,11 +298,8 @@ def main(
     # Shuffle the files
     files = smart_shuffle(files)
 
-    app = Kronos(files, n, kronos_dir)
+    app = Kronos(files, n, kronos_dir, directory)
     app.run()
-            
-    # Print final message
-    print(f'\n[bold green]Done.[/bold green]')
 
 # Entrypoint
 if __name__ == '__main__':
