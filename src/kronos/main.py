@@ -299,7 +299,7 @@ def main(
     # Add option -n/--num-files: how many files to end up with (default = 10)
     n: Annotated[
         int,
-        typer.Option('-n', '--num-files', help='Number of files to collect'),
+        typer.Option('-n', '--num-files', help=f'Number of files to collect [dim](default: 10)[/dim]'),
     ] = 10,
     # Add option -o/--overwrite: allows overwriting existing kronos directory
     overwrite: Annotated[
