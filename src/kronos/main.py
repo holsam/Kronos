@@ -31,6 +31,12 @@ def collect_files(base_dir: Path) -> list[Path]:
     '''Recursively collect all files under base_dir'''
     return [p for p in base_dir.rglob('*') if p.is_file()]
 
+# time_decay
+def time_decay(ts: float, now:float, half_life_days: float = 14.0) -> float:
+    '''Implement exponential decay so older events matter less than recent events'''
+    age_days = (now - ts) / 86400
+    return 0.5 ** (age_days / half_life_days)
+
 # penalty_multiplier
 # Returns a float multiplier based on past interactions with file: skipped/selected reduces multiplier, never seen has no effect
 def penalty_multiplier(state_entry: dict) -> float:
