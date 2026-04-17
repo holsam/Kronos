@@ -340,6 +340,11 @@ def main(
         # Exit
         raise typer.Exit(code=1)
 
+    # Check directory contains more files than specified amount
+    if len(files) < n:
+        # Print a message
+        print(f'[red]Directory ([/red][cyan]{directory}[/cyan][red]) contains less files than the number of files to select ({len(files)} < {n})[/red]')
+
     # Load state
     state = load_state()
 
