@@ -1,6 +1,6 @@
 [project]
 name = "kronos"
-version = "0.5.2"
+version = "0.5.3"
 description = "A file rediscovery tool."
 readme = "README.md"
 authors = [

@@ -196,11 +196,6 @@ class Kronos(App):
         return f'{action}: {name[:available]}[dim]...[/dim]{ext}'
 
     def refresh_ui(self):
-        # Check files included doesn't equal or exceed the desired number
-        if self.index >= len(self.files):
-            self.exit()
-            return
-
         # Refresh actions column of info panel
         self.query_one('#actions', Static).update(
             f'[bold]ACTIONS[/bold]\n[italic][bold]y[/bold] = include file\n[bold]n[/bold] = skip file\n[bold]q[/bold] = quit Kronos[/italic]'
@@ -221,7 +216,6 @@ class Kronos(App):
         file = self.files[self.index]
 
         # Refresh file panel
-        cur_dir = self.kronos_dir.parent # get current directory
         rel_parent = file.relative_to(self.base_dir).parent # get parent of files relative to current directory subdirectory/ies file is from
         subdir = '/' if rel_parent == "." else f'{rel_parent}/'
 
@@ -230,7 +224,13 @@ class Kronos(App):
         )
 
     def next_file(self):
-        self.index += 1
+        # If not reached the end of files in directory
+        if not self.index > len(self.files):
+            # Increase file index by 1
+            self.index += 1
+        else:
+            # Otherwise reset to 0
+            self.index = 0
         self.refresh_ui()
 
     # Define on_action function to implement state management
@@ -245,9 +245,6 @@ class Kronos(App):
 
     # Define action on keybinding y
     def action_accept(self):
-        if self.selected >= self.n:
-            self.exit()
-            return
         file = self.files[self.index]
         # Define the destination
         dest = self.kronos_dir / file.name
@@ -269,6 +266,7 @@ class Kronos(App):
         self.history.append(f'Included: {file.name}')
         if self.selected >= self.n:
             self.exit()
+            return
         else:
             self.next_file()
     # Define action on keybinding n
@@ -286,6 +284,7 @@ class Kronos(App):
         # Update history
         self.history.append(f'Quit Kronos')
         self.exit()
+        return
 
 
 # Define command
